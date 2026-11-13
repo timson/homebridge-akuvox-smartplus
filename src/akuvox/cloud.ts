@@ -1,6 +1,6 @@
 import { connect as http2Connect } from 'node:http2';
 import type { Region } from '../settings.js';
-import { hashPassword, loginUserParam } from './crypto.js';
+import { caesarShift, hashPassword, loginUserParam } from './crypto.js';
 import type { AkuvoxDevice, DoorLogEntry, Envelope } from './types.js';
 
 const USER_AGENT = 'VBell/7.51.3 (iPad; iOS 26.6; Scale/2.00)';
@@ -21,28 +21,51 @@ export interface LoginChallenge {
 export interface LoginResult {
   token: string;
   refreshToken: string;
+  authToken?: string;
   tokenValidSeconds: number;
   idCode?: string;
   restServer: string;
   webBackendServer?: string;
   rtspRelay?: string;
   vrtspServer?: string;
+  sipServer?: string;
   raw: Envelope;
 }
 
-const isSuccess = (e: Envelope): boolean => e.result === 0 || e.err_code === '0' || e.code === 0;
+const isSuccess = (e: Envelope): boolean => [e.result, e.err_code, e.code].some((code) => code === 0 || code === '0');
 const payload = (e: Envelope): Envelope => (e.datas ?? e.data ?? e) as Envelope;
+
+/** Country calling code and local subscriber number, without the local trunk-prefix zero. */
+export function normalizePhone(countryCode: string, phoneNumber: string): { countryCode: string; phoneNumber: string } {
+  const country = countryCode.trim().replace(/^\+/, '');
+  const number = phoneNumber.trim().replace(/[\s()-]/g, '').replace(/^0/, '');
+  if (!/^[1-9]\d{0,2}$/.test(country) || !/^\d+$/.test(number)) {
+    throw new AkuvoxError('Enter a valid country calling code and local phone number (without the country code)');
+  }
+  return { countryCode: country, phoneNumber: number };
+}
+
+function rtspAuthority(server: unknown): string | undefined {
+  if (typeof server !== 'string' || !server.trim()) return undefined;
+  try {
+    return new URL(server.includes('://') ? server : `rtsp://${server}`).host || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function parseLoginResult(d: Envelope): LoginResult {
   return {
     token: d.token as string,
-    refreshToken: d.refresh_token as string,
+    refreshToken: (d.refresh_token ?? '') as string,
+    authToken: d.auth_token as string | undefined,
     tokenValidSeconds: Number(d.token_valid ?? 0),
     idCode: d.two_factor_auth_idcode as string | undefined,
     restServer: d.rest_server_https as string,
     webBackendServer: d.web_backend_server as string | undefined,
     rtspRelay: (d.rtmp_server as string | undefined)?.split(':')[0],
-    vrtspServer: d.vrtsp_server as string | undefined,
+    vrtspServer: rtspAuthority(d.rtsp_server) ?? d.vrtsp_server as string | undefined,
+    sipServer: d.pbx_server as string | undefined,
     raw: d,
   };
 }
@@ -97,11 +120,65 @@ export class AkuvoxCloud {
     return parseLoginResult(payload(e));
   }
 
+  /** Resolve the regional REST endpoint and request a passwordless SMS sign-in code. */
+  async sendSmsCode(countryCode: string, phoneNumber: string): Promise<string> {
+    const phone = normalizePhone(countryCode, phoneNumber);
+    const servers = await this.get(`${this.gate}/rest_server`, '6.0');
+    this.assert(servers, 'resolve REST server');
+    const restServer = payload(servers).rest_server_https as string;
+    if (!restServer) throw new AkuvoxError('REST server lookup returned no endpoint');
+    const e = await this.post(
+      `https://${restServer}/send_mobile_checkcode`,
+      '',
+      new URLSearchParams({ AreaCode: phone.countryCode, MobileNumber: phone.phoneNumber, Type: '0' }).toString(),
+      'application/x-www-form-urlencoded',
+    );
+    this.assert(e, 'send SMS code');
+    return restServer;
+  }
+
+  /** Exchange the SMS code, then retrieve endpoints omitted by sms_login. */
+  async verifySmsCode(countryCode: string, phoneNumber: string, code: string, restServer: string): Promise<LoginResult> {
+    const phone = normalizePhone(countryCode, phoneNumber);
+    if (!code.trim()) throw new AkuvoxError('Enter the SMS verification code');
+    const query = new URLSearchParams({ phone: caesarShift(phone.phoneNumber), code: code.trim(), area_code: phone.countryCode });
+    const e = await this.get(`${this.gate}/sms_login?${query}`, '6.6');
+    this.assert(e, 'SMS login');
+    const d = payload(e);
+    if (!d.token || !d.auth_token) throw new AkuvoxError('SMS login returned no session or auth token');
+    if (d.rtsp_server || d.vrtsp_server || d.rtmp_server) {
+      return parseLoginResult({ rest_server_https: restServer, ...d });
+    }
+
+    let servers: Envelope | undefined;
+    // The reference integration uses GET only in ucloud; other regions require POST.
+    if (this.region === 'ucloud') {
+      try {
+        const response = await this.get(`${this.gate}/servers_list`, '6.8', d.token as string);
+        this.assert(response, 'servers_list');
+        const data = payload(response);
+        if (data.rtsp_server || data.vrtsp_server || data.rtmp_server) servers = data;
+      } catch {
+        // Fall back to the POST variant below.
+      }
+    }
+    if (!servers) {
+      const response = await this.post(`${this.gate}/servers_list`, '6.8', JSON.stringify({
+        auth_token: d.auth_token, passwd: d.auth_token, token: d.token, user: caesarShift(phone.phoneNumber),
+      }), 'application/json', d.token as string);
+      this.assert(response, 'servers_list');
+      servers = payload(response);
+    }
+    return parseLoginResult({ rest_server_https: restServer, ...servers, ...d });
+  }
+
   /** Renew the token without re-login; the previous token is invalidated. */
-  async refresh(refreshToken: string, token: string): Promise<LoginResult> {
-    const e = await this.postHttp2(`${this.gate}/refresh_token`, '6.8', { refresh_token: refreshToken }, token);
+  async refresh(refreshToken: string, token: string, credentialKey: 'refresh_token' | 'auth_token' = 'refresh_token'): Promise<LoginResult> {
+    const e = await this.postHttp2(`${this.gate}/refresh_token`, '6.8', { [credentialKey]: refreshToken }, token);
     this.assert(e, 'refresh token');
-    return parseLoginResult(payload(e));
+    const d = payload(e);
+    if (!d.token) throw new AkuvoxError('Token refresh returned no session token');
+    return parseLoginResult(d);
   }
 
   /** Re-login on a trusted device, skipping the emailed code. */
@@ -132,12 +209,12 @@ export class AkuvoxCloud {
     }));
   }
 
-  async getSipConfig(restServer: string, token: string): Promise<{ sipUser: string; sipPassword: string } | undefined> {
+  async getSipConfig(restServer: string, token: string): Promise<{ sipUser: string; sipPassword: string; sipServer?: string } | undefined> {
     const e = await this.get(`https://${restServer}/userconf?token=${token}`, '7.13', token);
     this.assert(e, 'userconf');
     const app = payload(e).app_conf as Envelope | undefined;
     if (!app?.sip || !app?.sip_passwd) return undefined;
-    return { sipUser: app.sip as string, sipPassword: app.sip_passwd as string };
+    return { sipUser: app.sip as string, sipPassword: app.sip_passwd as string, sipServer: app.sip_server as string | undefined };
   }
 
   async getSipServer(token: string): Promise<string | undefined> {
@@ -186,7 +263,7 @@ export class AkuvoxCloud {
   }
 
   private headers(apiVersion: string, token: string, extra: Record<string, string> = {}): Record<string, string> {
-    return { 'api-version': apiVersion, 'User-Agent': USER_AGENT, 'x-auth-token': token, 'Accept-Language': 'en', Accept: '*/*', ...extra };
+    return { ...(apiVersion ? { 'api-version': apiVersion } : {}), 'User-Agent': USER_AGENT, 'x-auth-token': token, 'Accept-Language': 'en', Accept: '*/*', ...extra };
   }
 
   private async fetchJson(url: string, init: RequestInit): Promise<Envelope> {

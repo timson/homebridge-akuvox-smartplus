@@ -11,7 +11,7 @@ import type { AkuvoxDevice } from './akuvox/types.js';
 import type { CallController } from './camera/streaming-delegate.js';
 import { findLocalCamera, type LocalCameraConfig, type RtspTransport } from './camera/rtsp.js';
 import { buildAudioAnswer } from './sip/sdp.js';
-import type { Region } from './settings.js';
+import type { AuthMethod, Region } from './settings.js';
 import { PLATFORM_NAME, PLUGIN_NAME, REGIONS } from './settings.js';
 
 const REDISCOVER_MS = 5 * 60 * 1000;
@@ -20,6 +20,9 @@ export interface AkuvoxConfig extends PlatformConfig {
   region?: Region;
   email?: string;
   password?: string;
+  authMethod?: AuthMethod;
+  countryCode?: string;
+  phoneNumber?: string;
   unlockSeconds?: number;
   doorbell?: boolean;
   cameras?: LocalCameraConfig[];

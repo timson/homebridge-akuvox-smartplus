@@ -26,10 +26,26 @@ npm install -g homebridge-akuvox-smartplus
 
 Or in the Homebridge UI, search for **Akuvox SmartPlus**.
 
+### Install this GitHub fork
+
+In the Homebridge UI terminal (or a shell on the Homebridge host), install directly from GitHub:
+
+```bash
+npm install -g 'git+https://github.com/timson/homebridge-akuvox-smartplus.git#main'
+```
+
+Use `sudo` if your global npm directory requires it. For Docker, run the command inside the
+Homebridge container. Git must be available on the host. The `prepare` script compiles the
+TypeScript plugin during installation, so compiled files do not need to be committed.
+
+Configure the platform below, run `akuvox-pair --sms` (or `akuvox-pair` for email sign-in), then
+restart Homebridge. Re-run the same Git install command to update from this fork's `main` branch.
+
 ## Configure
 
 Add the platform (UI or `config.json`). Credentials are **not** required in config — pairing takes
-them interactively and stores only a session token.
+them interactively. Session tokens are stored in owner-only files under the Homebridge storage
+directory. Email/password pairing also saves the credentials there for trusted re-login.
 
 ```json
 {
@@ -50,7 +66,9 @@ them interactively and stores only a session token.
 | `region` | Akuvox cloud region: `ecloud` (EU/ME), `ucloud` (Americas), `scloud`, `jcloud`, `ccloud`, `rucloud` |
 | `unlockSeconds` | How long the lock shows Unlocked before snapping back (the door is a momentary buzzer) |
 | `doorbell` | Register on the intercom PBX for real-time ring notifications |
-| `email`, `password` | Optional. Only needed for automatic full re-login if the token ever fully expires |
+| `authMethod` | Optional. `email` for email/password or `sms` for phone/SMS pairing; otherwise choose interactively (existing email settings keep email sign-in) |
+| `countryCode`, `phoneNumber` | Optional SMS pairing defaults. Country calling code (e.g. `972`) and local phone number without the country code |
+| `email`, `password` | Optional email pairing defaults; credentials entered during pairing are saved separately for trusted re-login |
 | `cameras` | Optional. Stream a door station from a local RTSP source (e.g. an NVR channel) instead of the Akuvox cloud, with automatic fallback to the cloud |
 
 ### Local camera source (optional)
@@ -82,14 +100,29 @@ local source fails. Match it to the door station by MAC (separators and case are
 
 ## Pair (one time)
 
-The first sign-in needs a code emailed to the account:
+Run the pairing command and choose email/password or phone/SMS sign-in:
 
 ```bash
 akuvox-pair
 ```
 
-Enter the email, password and the emailed code when prompted, then restart Homebridge. The plugin
-keeps itself signed in afterwards by refreshing its token.
+For email sign-in, enter the email, password and the emailed code if requested.
+For passwordless phone sign-in, you can select SMS directly:
+
+```bash
+akuvox-pair --sms
+```
+
+Enter your country calling code, local phone number and the code received by SMS. For example,
+use country code `972` with local number `501234567` (an initial `0` is also accepted). The configured
+`region` must match your SmartPlus account; it is not inferred from the calling code.
+You can also set `"authMethod": "sms"`, `"countryCode": "972"` and `"phoneNumber": "501234567"`
+in the platform configuration. The SMS code is always entered interactively and is never saved.
+
+Then restart Homebridge. The plugin keeps itself signed in by refreshing its token, including
+SMS sessions. SMS pairing saves no password and removes any previously saved email/password.
+If SmartPlus invalidates the refresh credential, run `akuvox-pair` again. Use `akuvox-pair -U /path/to/storage`
+when your Homebridge storage directory differs from `/var/lib/homebridge` (or set `HOMEBRIDGE_STORAGE_PATH`).
 
 ## How it works
 

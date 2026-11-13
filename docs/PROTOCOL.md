@@ -32,6 +32,22 @@ POST gate/enduser/enduser_verify_code   api-version 7.33, JSON {verify_code, use
 
 ## Staying logged in
 
+### Phone / SMS login
+
+Following [nimroddolev/akuvox](https://github.com/nimroddolev/akuvox):
+
+1. `GET gate/rest_server`, api-version `6.0`, resolves `rest_server_https`.
+2. `POST rest/send_mobile_checkcode`, form `AreaCode=<country calling code>&MobileNumber=<local number>&Type=0`.
+3. `GET gate/sms_login?phone=<digits shifted +3 modulo 10>&code=<SMS code>&area_code=<calling code>`, api-version `6.6`.
+   The response returns `token` and `auth_token`.
+4. Retrieve endpoint metadata with `POST gate/servers_list`, api-version `6.8`, JSON
+   `{auth_token, passwd: auth_token, token, user: <shifted phone number>}` and `x-auth-token`.
+   `ucloud` tries GET first, then falls back to POST.
+
+Strip formatting and the initial local trunk-prefix zero before sending the subscriber number.
+SMS sessions refresh with JSON `{auth_token}` rather than `{refresh_token}`. Retain the existing
+refresh credential when the response only returns a new session token.
+
 | Path | Request | Result |
 |---|---|---|
 | Refresh | `POST gate/refresh_token` api-version **6.8**, JSON `{refresh_token}`, `x-auth-token: <token>` | new `token` + `refresh_token`; the old token stops working at once |

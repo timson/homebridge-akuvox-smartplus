@@ -38,19 +38,21 @@ export class SessionManager {
   }
 
   /** Persist the result of a fresh login or pairing as the active session. */
-  adopt(result: LoginResult, sip?: { sipUser: string; sipPassword: string }, sipServer?: string): AkuvoxSession {
+  adopt(result: LoginResult, sip?: { sipUser: string; sipPassword: string }, sipServer?: string, replace = false): AkuvoxSession {
+    const previous = replace ? undefined : this.session;
     const session: AkuvoxSession = {
       token: result.token,
       refreshToken: result.refreshToken,
+      authToken: result.authToken,
       tokenValidSeconds: result.tokenValidSeconds,
-      idCode: result.idCode ?? this.session?.idCode,
-      restServer: result.restServer ?? this.session?.restServer ?? '',
-      webBackendServer: result.webBackendServer ?? this.session?.webBackendServer,
-      rtspRelay: result.rtspRelay ?? this.session?.rtspRelay,
-      vrtspServer: result.vrtspServer ?? this.session?.vrtspServer,
-      sipUser: sip?.sipUser ?? this.session?.sipUser,
-      sipPassword: sip?.sipPassword ?? this.session?.sipPassword,
-      sipServer: sipServer ?? this.session?.sipServer,
+      idCode: result.idCode ?? previous?.idCode,
+      restServer: result.restServer ?? previous?.restServer ?? '',
+      webBackendServer: result.webBackendServer ?? previous?.webBackendServer,
+      rtspRelay: result.rtspRelay ?? previous?.rtspRelay,
+      vrtspServer: result.vrtspServer ?? previous?.vrtspServer,
+      sipUser: sip?.sipUser ?? previous?.sipUser,
+      sipPassword: sip?.sipPassword ?? previous?.sipPassword,
+      sipServer: sipServer ?? result.sipServer ?? previous?.sipServer,
       obtainedAt: new Date().toISOString(),
     };
     this.session = session;
@@ -67,11 +69,19 @@ export class SessionManager {
     const s = this.current();
     try {
       this.log.info('Refreshing Akuvox token');
-      return this.adopt(await this.cloud.refresh(s.refreshToken, s.token));
+      const result = await (s.authToken
+        ? this.cloud.refresh(s.authToken, s.token, 'auth_token')
+        : this.cloud.refresh(s.refreshToken, s.token));
+      return this.adopt({
+        ...result,
+        refreshToken: result.refreshToken || s.refreshToken,
+        authToken: result.authToken ?? s.authToken,
+      });
     } catch (error) {
-      this.log.warn(`Token refresh failed (${(error as Error).message}); trying trusted re-login`);
+      this.log.warn(`Token refresh failed (${(error as Error).message})`);
     }
-    if (s.idCode && this.cloud.hasCredentials) {
+    if (!s.authToken && s.idCode && this.cloud.hasCredentials) {
+      this.log.info('Trying trusted Akuvox re-login');
       return this.adopt(await this.cloud.reloginWithIdCode(s.idCode));
     }
     throw new NotPairedError('Session expired and cannot be renewed. Run `akuvox-pair` again.');

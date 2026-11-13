@@ -57,6 +57,14 @@ describe('CredentialsStore', () => {
     store.write({ email: 'a@b.com', password: '' });
     expect(store.read()).toBeUndefined();
   });
+
+  it('clears credentials left by a previous email pairing', () => {
+    const store = new CredentialsStore(dir);
+    store.write({ email: 'a@b.com', password: 'pw' });
+    store.clear();
+    expect(store.read()).toBeUndefined();
+    expect(() => store.clear()).not.toThrow();
+  });
 });
 
 describe('isStale', () => {

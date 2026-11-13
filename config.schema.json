@@ -2,7 +2,7 @@
   "pluginAlias": "AkuvoxSmartPlus",
   "pluginType": "platform",
   "singular": true,
-  "headerDisplay": "Connects an Akuvox SmartPlus intercom to HomeKit. Use a dedicated family-member account, not your personal login. After saving, run `akuvox-pair` once over SSH to complete the emailed-code sign-in, then restart Homebridge.",
+  "headerDisplay": "Connects an Akuvox SmartPlus intercom to HomeKit. Use a dedicated family-member account, not your personal login. After saving, run `akuvox-pair` once over SSH to sign in with email/password or a phone number and SMS code, then restart Homebridge.",
   "schema": {
     "type": "object",
     "properties": {
@@ -25,6 +25,26 @@
           { "title": "Russia (rucloud)", "enum": ["rucloud"] }
         ],
         "required": true
+      },
+      "authMethod": {
+        "title": "Sign-in method",
+        "description": "Used by akuvox-pair. SMS sign-in requires no password. Leave unset to choose when pairing.",
+        "type": "string",
+        "oneOf": [
+          { "title": "Email and password", "enum": ["email"] },
+          { "title": "Phone and SMS code", "enum": ["sms"] }
+        ]
+      },
+      "countryCode": {
+        "title": "Country calling code (SMS)",
+        "description": "For example 972 for Israel or 1 for the US. Leave blank to enter it during pairing. Select the account's cloud region above.",
+        "type": "string",
+        "pattern": "^\\+?[1-9][0-9]{0,2}$"
+      },
+      "phoneNumber": {
+        "title": "SmartPlus phone number (SMS)",
+        "description": "Local number without the country calling code. An initial trunk-prefix zero is removed automatically. Leave blank to enter it during pairing.",
+        "type": "string"
       },
       "email": {
         "title": "SmartPlus account email (optional)",

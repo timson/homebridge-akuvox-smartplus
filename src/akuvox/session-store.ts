@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AkuvoxSession } from './types.js';
 
@@ -37,6 +37,15 @@ export class CredentialsStore {
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     writeFileSync(this.file, JSON.stringify(credentials, null, 2), { mode: 0o600 });
     chmodSync(this.file, 0o600);
+  }
+
+  /** Passwordless pairing must not leave an earlier account's password behind. */
+  clear(): void {
+    try {
+      unlinkSync(this.file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
 }
 

@@ -3,6 +3,8 @@ export type Envelope = Record<string, unknown>;
 export interface AkuvoxSession {
   token: string;
   refreshToken: string;
+  /** SMS sessions renew with auth_token rather than refresh_token. */
+  authToken?: string;
   tokenValidSeconds: number;
   idCode?: string;
   restServer: string;

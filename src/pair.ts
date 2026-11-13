@@ -3,17 +3,20 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { AkuvoxCloud } from './akuvox/cloud.js';
+import { AkuvoxCloud, normalizePhone, type LoginResult } from './akuvox/cloud.js';
 import { SessionManager } from './akuvox/session-manager.js';
 import { CredentialsStore, SessionStore } from './akuvox/session-store.js';
-import type { Region } from './settings.js';
-import { PLATFORM_NAME } from './settings.js';
+import type { AuthMethod, Region } from './settings.js';
+import { PLATFORM_NAME, REGIONS } from './settings.js';
 
 interface PlatformBlock {
   platform?: string;
   region?: Region;
   email?: string;
   password?: string;
+  authMethod?: AuthMethod;
+  countryCode?: string;
+  phoneNumber?: string;
 }
 
 function storagePath(): string {
@@ -48,32 +51,63 @@ const block = readPlatformBlock(dir);
 const file = readCredentialsFile();
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 const region: Region = block.region ?? 'ecloud';
-const email = block.email ?? file.email ?? (await rl.question('SmartPlus account email: ')).trim();
-const password = block.password ?? file.password ?? (await rl.question('SmartPlus account password: '));
-const cloud = new AkuvoxCloud(region, email, password);
-const manager = new SessionManager(cloud, new SessionStore(dir), log);
+try {
+  if (!REGIONS.includes(region)) throw new Error(`Unknown region "${region}". Expected one of: ${REGIONS.join(', ')}`);
+  let method: string | undefined = process.argv.includes('--sms') ? 'sms' : block.authMethod;
+  if (!method) {
+    if (block.phoneNumber?.trim()) method = 'sms';
+    else if (block.email || file.email) method = 'email';
+    else method = (await rl.question('Sign-in method (email/sms) [email]: ')).trim().toLowerCase() || 'email';
+  }
+  if (method !== 'sms' && method !== 'email') throw new Error('Sign-in method must be email or sms');
 
-console.log(`Signing in to Akuvox (${region}) as ${email} …`);
-const challenge = await cloud.login();
+  let cloud: AkuvoxCloud;
+  let result: LoginResult;
+  let credentials: { email: string; password: string } | undefined;
+  if (method === 'sms') {
+    const phone = normalizePhone(
+      block.countryCode?.trim() || await rl.question('Country calling code (e.g. 972): '),
+      block.phoneNumber?.trim() || await rl.question('SmartPlus local phone number (without country code): '),
+    );
+    cloud = new AkuvoxCloud(region, '', '');
+    console.log(`Requesting an SMS sign-in code from Akuvox (${region}) …`);
+    const restServer = await cloud.sendSmsCode(phone.countryCode, phone.phoneNumber);
+    const code = (await rl.question('Enter the verification code received by SMS: ')).trim();
+    result = await cloud.verifySmsCode(phone.countryCode, phone.phoneNumber, code, restServer);
+  } else {
+    const email = block.email ?? file.email ?? (await rl.question('SmartPlus account email: ')).trim();
+    const password = block.password ?? file.password ?? await rl.question('SmartPlus account password: ');
+    credentials = { email, password };
+    cloud = new AkuvoxCloud(region, email, password);
+    console.log(`Signing in to Akuvox (${region}) as ${email} …`);
+    const challenge = await cloud.login();
+    if (challenge.result) {
+      result = challenge.result;
+    } else {
+      if (!challenge.needsTwoFactor || !challenge.tempToken) throw new Error('Login returned no token and no two-factor challenge.');
+      await cloud.sendTwoFactorCode(challenge.restServer, challenge.tempToken);
+      const code = (await rl.question('Enter the verification code emailed to the account: ')).trim();
+      result = await cloud.verifyTwoFactorCode(code);
+    }
+  }
 
-let result = challenge.result;
-if (!result) {
-  if (!challenge.needsTwoFactor || !challenge.tempToken) throw new Error('Login returned no token and no two-factor challenge.');
-  await cloud.sendTwoFactorCode(challenge.restServer, challenge.tempToken);
-  const code = (await rl.question('Enter the verification code emailed to the account: ')).trim();
-  result = await cloud.verifyTwoFactorCode(code);
+  const sip = await cloud.getSipConfig(result.restServer, result.token);
+  const sipServer = sip?.sipServer ?? result.sipServer ?? await cloud.getSipServer(result.token);
+  // Pairing replaces any previous account instead of inheriting its session metadata.
+  const store = new SessionStore(dir);
+  const manager = new SessionManager(cloud, store, log);
+  manager.adopt(result, sip, sipServer, true);
+  const credentialsStore = new CredentialsStore(dir);
+  if (credentials) credentialsStore.write(credentials);
+  else credentialsStore.clear();
+
+  const devices = await manager.listDevices();
+  console.log('\nPaired. Session saved to the Homebridge storage directory.');
+  console.log('Devices visible to this account:');
+  for (const d of devices) {
+    console.log(`  - ${d.location} (${d.devType === '1' ? 'door station' : 'indoor monitor'}), relays: ${d.relays.map((r) => r.doorName).join(', ') || 'none'}`);
+  }
+  console.log('\nRestart Homebridge to let the plugin pick up the session.');
+} finally {
+  rl.close();
 }
-rl.close();
-
-const sip = await cloud.getSipConfig(result.restServer, result.token);
-const sipServer = await cloud.getSipServer(result.token);
-manager.adopt(result, sip, sipServer);
-new CredentialsStore(dir).write({ email, password });
-
-const devices = await manager.listDevices();
-console.log('\nPaired. Session saved to the Homebridge storage directory.');
-console.log('Devices visible to this account:');
-for (const d of devices) {
-  console.log(`  - ${d.location} (${d.devType === '1' ? 'door station' : 'indoor monitor'}), relays: ${d.relays.map((r) => r.doorName).join(', ') || 'none'}`);
-}
-console.log('\nRestart Homebridge to let the plugin pick up the session.');
