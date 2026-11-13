@@ -41,7 +41,7 @@ cd "$akuvox_build_dir"
 npm ci --global=false --include=dev --ignore-scripts
 npm run build
 npm pack --ignore-scripts
-npm install -g "$akuvox_build_dir/homebridge-akuvox-smartplus-timson-0.5.0.tgz"
+npm install -g "$akuvox_build_dir/homebridge-akuvox-smartplus-timson-0.5.1.tgz"
 ```
 
 Use `sudo` for the final install command if your global npm directory requires it. For Docker,
@@ -90,6 +90,8 @@ By default the door camera streams through the Akuvox cloud relay. If the interc
 reachable locally — for example as a channel on an NVR — point the plugin at that RTSP URL to
 get a faster, cloud-independent stream. It's tried first, and falls back to the cloud if the
 local source fails. Match it to the door station by MAC (separators and case are ignored).
+Incomplete camera entries are ignored; the plugin uses the cloud stream when no complete local
+entry matches the door station.
 
 ```json
 {

@@ -84,4 +84,25 @@ describe('camera MAC matching', () => {
     expect(findLocalCamera(cameras, 'AABBCCDDEEFF')).toBeUndefined();
     expect(findLocalCamera(undefined, '0c11052a6095')).toBeUndefined();
   });
+
+  it('skips incomplete UI rows without crashing or hiding a later valid camera', () => {
+    const config = [
+      {}, null, undefined, { rtspUrl: 'rtsp://nvr/no-mac' },
+      { mac: 123, rtspUrl: 'rtsp://nvr/wrong-mac' },
+      { mac: cameras[0]!.mac },
+      { mac: cameras[0]!.mac, rtspUrl: '   ' },
+      { mac: cameras[0]!.mac, rtspUrl: 123 },
+      { mac: cameras[0]!.mac, rtspUrl: 'rtsp://nvr/invalid-transport', rtspTransport: 'invalid' },
+      ...cameras,
+    ];
+    expect(findLocalCamera(config, '0c11052a6095')).toBe(cameras[0]);
+  });
+
+  it.each([undefined, null, {}, 'invalid', 1, [], [{}], [null]])('ignores malformed or incomplete config: %j', (config) => {
+    expect(findLocalCamera(config, '0c11052a6095')).toBeUndefined();
+  });
+
+  it.each([undefined, null, 123, '', ':-'])('does not match an invalid device MAC: %j', (mac) => {
+    expect(findLocalCamera([{}, ...cameras], mac)).toBeUndefined();
+  });
 });

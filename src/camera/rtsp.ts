@@ -41,13 +41,20 @@ export function buildStreamSources(
 }
 
 /** MAC compared without separators or case, so "0C:11:05…" and "0c1105…" match. */
-export function normalizeMac(mac: string): string {
-  return mac.replace(/[^0-9a-z]/gi, '').toLowerCase();
+export function normalizeMac(mac: unknown): string {
+  return typeof mac === 'string' ? mac.replace(/[^0-9a-z]/gi, '').toLowerCase() : '';
 }
 
-export function findLocalCamera(cameras: LocalCameraConfig[] | undefined, mac: string): LocalCameraConfig | undefined {
+/** Config JSON may contain unfinished UI rows; skip them and allow cloud fallback. */
+export function findLocalCamera(cameras: unknown, mac: unknown): LocalCameraConfig | undefined {
   const target = normalizeMac(mac);
-  return (cameras ?? []).find((c) => normalizeMac(c.mac) === target);
+  if (!target || !Array.isArray(cameras)) return undefined;
+  return cameras.find((c): c is LocalCameraConfig => (
+    c !== null && typeof c === 'object'
+    && typeof c.mac === 'string' && normalizeMac(c.mac) === target
+    && typeof c.rtspUrl === 'string' && c.rtspUrl.trim().length > 0
+    && (c.rtspTransport === undefined || c.rtspTransport === 'tcp' || c.rtspTransport === 'udp')
+  ));
 }
 
 /** Hide the RTSP password when a URL is logged, including percent-encoded ones with a query string. */
