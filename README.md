@@ -28,18 +28,27 @@ Or in the Homebridge UI, search for **Akuvox SmartPlus**.
 
 ### Install this GitHub fork
 
-In the Homebridge UI terminal (or a shell on the Homebridge host), install directly from GitHub:
+In the Homebridge UI terminal (or a shell on the Homebridge host), clone and build this fork,
+then install its packed plugin:
 
 ```bash
-npm install -g 'git+https://github.com/timson/homebridge-akuvox-smartplus.git#main'
+akuvox_build_dir="$(mktemp -d)"
+git clone --depth 1 https://github.com/timson/homebridge-akuvox-smartplus.git "$akuvox_build_dir"
+cd "$akuvox_build_dir"
+npm ci --global=false --include=dev --ignore-scripts
+npm run build
+npm pack --ignore-scripts
+npm install -g "$akuvox_build_dir/homebridge-akuvox-smartplus-0.4.0.tgz"
 ```
 
-Use `sudo` if your global npm directory requires it. For Docker, run the command inside the
-Homebridge container. Git must be available on the host. The `prepare` script compiles the
-TypeScript plugin during installation, so compiled files do not need to be committed.
+Use `sudo` for the final install command if your global npm directory requires it. For Docker,
+run these commands inside the Homebridge container. Git must be available on the host.
+This flow avoids [npm's global Git installation bug](https://github.com/npm/cli/issues/8440),
+which can cause `tsc: not found` while preparing a Git dependency. Compilation happens locally;
+the global installation consumes a package containing the compiled plugin.
 
 Configure the platform below, run `akuvox-pair --sms` (or `akuvox-pair` for email sign-in), then
-restart Homebridge. Re-run the same Git install command to update from this fork's `main` branch.
+restart Homebridge. Repeat these steps to update from this fork's `main` branch.
 
 ## Configure
 
