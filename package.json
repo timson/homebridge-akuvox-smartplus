@@ -1,9 +1,17 @@
 {
-  "name": "homebridge-akuvox-smartplus",
-  "displayName": "Akuvox SmartPlus",
-  "version": "0.4.0",
+  "name": "homebridge-akuvox-smartplus-timson",
+  "displayName": "Akuvox SmartPlus (timson)",
+  "version": "0.5.0",
   "description": "Homebridge plugin for Akuvox SmartPlus intercoms: unlock, doorbell and camera through the Akuvox cloud.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/timson/homebridge-akuvox-smartplus.git"
+  },
+  "homepage": "https://github.com/timson/homebridge-akuvox-smartplus#readme",
+  "bugs": {
+    "url": "https://github.com/timson/homebridge-akuvox-smartplus/issues"
+  },
   "main": "dist/index.js",
   "bin": {
     "akuvox-pair": "dist/pair.js"

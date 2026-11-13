@@ -17,6 +17,7 @@ interface PlatformBlock {
   authMethod?: AuthMethod;
   countryCode?: string;
   phoneNumber?: string;
+  stripLeadingZero?: boolean;
 }
 
 function storagePath(): string {
@@ -65,9 +66,15 @@ try {
   let result: LoginResult;
   let credentials: { email: string; password: string } | undefined;
   if (method === 'sms') {
+    if (process.argv.includes('--strip-leading-zero') && process.argv.includes('--keep-leading-zero')) {
+      throw new Error('Choose only one of --strip-leading-zero and --keep-leading-zero');
+    }
+    const stripLeadingZero = process.argv.includes('--keep-leading-zero') ? false
+      : process.argv.includes('--strip-leading-zero') || block.stripLeadingZero === true;
     const phone = normalizePhone(
       block.countryCode?.trim() || await rl.question('Country calling code (e.g. 972): '),
       block.phoneNumber?.trim() || await rl.question('SmartPlus local phone number (without country code): '),
+      stripLeadingZero,
     );
     cloud = new AkuvoxCloud(region, '', '');
     console.log(`Requesting an SMS sign-in code from Akuvox (${region}) …`);

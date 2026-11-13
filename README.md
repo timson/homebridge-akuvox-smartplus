@@ -1,4 +1,4 @@
-# homebridge-akuvox-smartplus
+# homebridge-akuvox-smartplus-timson
 
 A [Homebridge](https://homebridge.io) plugin that brings an **Akuvox SmartPlus** intercom into
 Apple HomeKit through the Akuvox cloud — no extra hub, no Home Assistant.
@@ -21,10 +21,13 @@ listens for the ring, so your phones keep ringing as before.
 ## Install
 
 ```bash
-npm install -g homebridge-akuvox-smartplus
+npm install -g homebridge-akuvox-smartplus-timson
 ```
 
-Or in the Homebridge UI, search for **Akuvox SmartPlus**.
+Or in the Homebridge UI's **Plugins** tab, search for **homebridge-akuvox-smartplus-timson**
+and install **Akuvox SmartPlus (timson)**. Requires Homebridge 2 and Node 22 or newer.
+When switching from the original package, uninstall `homebridge-akuvox-smartplus` and retain
+your existing `AkuvoxSmartPlus` platform configuration and session files.
 
 ### Install this GitHub fork
 
@@ -38,7 +41,7 @@ cd "$akuvox_build_dir"
 npm ci --global=false --include=dev --ignore-scripts
 npm run build
 npm pack --ignore-scripts
-npm install -g "$akuvox_build_dir/homebridge-akuvox-smartplus-0.4.0.tgz"
+npm install -g "$akuvox_build_dir/homebridge-akuvox-smartplus-timson-0.5.0.tgz"
 ```
 
 Use `sudo` for the final install command if your global npm directory requires it. For Docker,
@@ -77,6 +80,7 @@ directory. Email/password pairing also saves the credentials there for trusted r
 | `doorbell` | Register on the intercom PBX for real-time ring notifications |
 | `authMethod` | Optional. `email` for email/password or `sms` for phone/SMS pairing; otherwise choose interactively (existing email settings keep email sign-in) |
 | `countryCode`, `phoneNumber` | Optional SMS pairing defaults. Country calling code (e.g. `972`) and local phone number without the country code |
+| `stripLeadingZero` | Optional, defaults to `false`. Remove one initial zero from the phone number during SMS pairing |
 | `email`, `password` | Optional email pairing defaults; credentials entered during pairing are saved separately for trusted re-login |
 | `cameras` | Optional. Stream a door station from a local RTSP source (e.g. an NVR channel) instead of the Akuvox cloud, with automatic fallback to the cloud |
 
@@ -123,10 +127,15 @@ akuvox-pair --sms
 ```
 
 Enter your country calling code, local phone number and the code received by SMS. For example,
-use country code `972` with local number `501234567` (an initial `0` is also accepted). The configured
+use country code `972` with local number `0501234567`. Leading zeros are preserved by default. The configured
 `region` must match your SmartPlus account; it is not inferred from the calling code.
-You can also set `"authMethod": "sms"`, `"countryCode": "972"` and `"phoneNumber": "501234567"`
+You can also set `"authMethod": "sms"`, `"countryCode": "972"` and `"phoneNumber": "0501234567"`
 in the platform configuration. The SMS code is always entered interactively and is never saved.
+
+If your account expects the number without its initial zero, enable `"stripLeadingZero": true`
+or run `akuvox-pair --sms --strip-leading-zero`. To preserve the zero even when that setting is
+enabled, use `akuvox-pair --sms --keep-leading-zero`. The chosen format is used consistently
+for requesting the SMS, verifying its code, and retrieving the account's servers.
 
 Then restart Homebridge. The plugin keeps itself signed in by refreshing its token, including
 SMS sessions. SMS pairing saves no password and removes any previously saved email/password.

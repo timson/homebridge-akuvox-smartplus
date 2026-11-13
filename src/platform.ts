@@ -23,6 +23,7 @@ export interface AkuvoxConfig extends PlatformConfig {
   authMethod?: AuthMethod;
   countryCode?: string;
   phoneNumber?: string;
+  stripLeadingZero?: boolean;
   unlockSeconds?: number;
   doorbell?: boolean;
   cameras?: LocalCameraConfig[];

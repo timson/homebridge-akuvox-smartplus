@@ -43,8 +43,14 @@
       },
       "phoneNumber": {
         "title": "SmartPlus phone number (SMS)",
-        "description": "Local number without the country calling code. An initial trunk-prefix zero is removed automatically. Leave blank to enter it during pairing.",
+        "description": "Local number without the country calling code. Leading zeros are preserved by default. Leave blank to enter it during pairing.",
         "type": "string"
+      },
+      "stripLeadingZero": {
+        "title": "Remove leading zero from SMS phone number",
+        "description": "Enable only if your SmartPlus account expects the local number without its initial zero. Applies to SMS pairing.",
+        "type": "boolean",
+        "default": false
       },
       "email": {
         "title": "SmartPlus account email (optional)",

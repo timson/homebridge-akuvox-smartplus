@@ -44,7 +44,9 @@ Following [nimroddolev/akuvox](https://github.com/nimroddolev/akuvox):
    `{auth_token, passwd: auth_token, token, user: <shifted phone number>}` and `x-auth-token`.
    `ucloud` tries GET first, then falls back to POST.
 
-Strip formatting and the initial local trunk-prefix zero before sending the subscriber number.
+Strip formatting and preserve leading zeros by default. Pairing can optionally remove one initial
+zero using `stripLeadingZero` or `--strip-leading-zero`; apply this once before the SMS request,
+verification, and server lookup so all steps use the same subscriber number.
 SMS sessions refresh with JSON `{auth_token}` rather than `{refresh_token}`. Retain the existing
 refresh credential when the response only returns a new session token.
 

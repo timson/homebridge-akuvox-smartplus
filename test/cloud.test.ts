@@ -45,7 +45,7 @@ describe('SMS login', () => {
     const [url, init] = fetchMock.mock.calls[1]!;
     expect(url).toBe('https://rest.ecloud.akuvox.com:8443/send_mobile_checkcode');
     expect(init?.method).toBe('POST');
-    expect(Object.fromEntries(new URLSearchParams(init?.body as string))).toEqual({ AreaCode: '972', MobileNumber: '501234567', Type: '0' });
+    expect(Object.fromEntries(new URLSearchParams(init?.body as string))).toEqual({ AreaCode: '972', MobileNumber: '0501234567', Type: '0' });
     expect(cloud.hasCredentials).toBe(false);
   });
 
@@ -55,11 +55,11 @@ describe('SMS login', () => {
     const cloud = new AkuvoxCloud('ecloud', '', '');
     const result = await cloud.verifySmsCode('972', '0501234567', '012345', 'discovered-rest:8443');
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).toBe('https://gate.ecloud.akuvox.com:8600/sms_login?phone=834567890&code=012345&area_code=972');
+    expect(String(url)).toBe('https://gate.ecloud.akuvox.com:8600/sms_login?phone=3834567890&code=012345&area_code=972');
     expect(init?.headers).toMatchObject({ 'api-version': '6.6' });
     expect(fetchMock.mock.calls[1]![0]).toBe('https://gate.ecloud.akuvox.com:8600/servers_list');
     expect(fetchMock.mock.calls[1]![1]).toMatchObject({ method: 'POST', headers: { 'api-version': '6.8', 'x-auth-token': 'session' } });
-    expect(JSON.parse(fetchMock.mock.calls[1]![1]?.body as string)).toEqual({ auth_token: 'sms-auth', passwd: 'sms-auth', token: 'session', user: '834567890' });
+    expect(JSON.parse(fetchMock.mock.calls[1]![1]?.body as string)).toEqual({ auth_token: 'sms-auth', passwd: 'sms-auth', token: 'session', user: '3834567890' });
     expect(result).toMatchObject({ token: 'session', authToken: 'sms-auth', refreshToken: '', tokenValidSeconds: 3600, restServer: 'account-rest:8443', webBackendServer: 'backend', vrtspServer: 'video:554', sipServer: 'pbx:5060' });
   });
 
@@ -111,6 +111,9 @@ describe('SMS login', () => {
 
   it('preserves significant leading subscriber digits', () => {
     expect(normalizePhone('+1', '(555) 123-4567')).toEqual({ countryCode: '1', phoneNumber: '5551234567' });
+    expect(normalizePhone('972', '0501234567').phoneNumber).toBe('0501234567');
+    expect(normalizePhone('972', '0501234567', true).phoneNumber).toBe('501234567');
+    expect(normalizePhone('972', '501234567', true).phoneNumber).toBe('501234567');
   });
 });
 

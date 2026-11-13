@@ -79,7 +79,48 @@ describe('akuvox-pair', () => {
       'SmartPlus local phone number (without country code): ',
       'Enter the verification code received by SMS: ',
     ]);
-    expect(fetchMock.mock.calls[2]![0]).toContain('phone=834567890');
+    expect(fetchMock.mock.calls[2]![0]).toContain('phone=3834567890');
+  });
+
+  it.each([
+    { stripLeadingZero: false, flags: [], number: '0501234567', shifted: '3834567890' },
+    { stripLeadingZero: true, flags: [], number: '501234567', shifted: '834567890' },
+    { stripLeadingZero: false, flags: ['--strip-leading-zero'], number: '501234567', shifted: '834567890' },
+    { stripLeadingZero: true, flags: ['--keep-leading-zero'], number: '0501234567', shifted: '3834567890' },
+  ])('uses a consistent phone format through SMS pairing: $number ($flags)', async ({ stripLeadingZero, flags, number, shifted }) => {
+    configure({ authMethod: 'sms', countryCode: '972', phoneNumber: '0501234567', stripLeadingZero });
+    process.argv.push(...flags);
+    input.question.mockResolvedValueOnce('123456');
+    respond({ rest_server_https: 'rest:8443' });
+    respond({});
+    respond({ token: 'session', auth_token: 'auth' });
+    respond({ vrtsp_server: 'camera:554' });
+    accountData();
+    await import('../src/pair.js');
+    expect(new URLSearchParams(fetchMock.mock.calls[1]![1]?.body as string).get('MobileNumber')).toBe(number);
+    expect(new URL(String(fetchMock.mock.calls[2]![0])).searchParams.get('phone')).toBe(shifted);
+    expect(JSON.parse(fetchMock.mock.calls[3]![1]?.body as string).user).toBe(shifted);
+  });
+
+  it('removes at most one leading zero across all pairing steps', async () => {
+    configure({ authMethod: 'sms', countryCode: '972', phoneNumber: '00501234567', stripLeadingZero: true });
+    input.question.mockResolvedValueOnce('123456');
+    respond({ rest_server_https: 'rest:8443' });
+    respond({});
+    respond({ token: 'session', auth_token: 'auth' });
+    respond({ vrtsp_server: 'camera:554' });
+    accountData();
+    await import('../src/pair.js');
+    expect(new URLSearchParams(fetchMock.mock.calls[1]![1]?.body as string).get('MobileNumber')).toBe('0501234567');
+    expect(new URL(String(fetchMock.mock.calls[2]![0])).searchParams.get('phone')).toBe('3834567890');
+  });
+
+  it('rejects contradictory phone format flags before sending an SMS', async () => {
+    configure({ authMethod: 'sms' });
+    process.argv.push('--strip-leading-zero', '--keep-leading-zero');
+    await expect(import('../src/pair.js')).rejects.toThrow('Choose only one');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(input.close).toHaveBeenCalledOnce();
   });
 
   it('uses SMS when configured even when a legacy email credentials file exists', async () => {

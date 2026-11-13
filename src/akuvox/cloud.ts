@@ -35,10 +35,11 @@ export interface LoginResult {
 const isSuccess = (e: Envelope): boolean => [e.result, e.err_code, e.code].some((code) => code === 0 || code === '0');
 const payload = (e: Envelope): Envelope => (e.datas ?? e.data ?? e) as Envelope;
 
-/** Country calling code and local subscriber number, without the local trunk-prefix zero. */
-export function normalizePhone(countryCode: string, phoneNumber: string): { countryCode: string; phoneNumber: string } {
+/** Strip formatting, preserving subscriber digits unless removal is explicitly requested. */
+export function normalizePhone(countryCode: string, phoneNumber: string, stripLeadingZero = false): { countryCode: string; phoneNumber: string } {
   const country = countryCode.trim().replace(/^\+/, '');
-  const number = phoneNumber.trim().replace(/[\s()-]/g, '').replace(/^0/, '');
+  const digits = phoneNumber.trim().replace(/[\s()-]/g, '');
+  const number = stripLeadingZero ? digits.replace(/^0/, '') : digits;
   if (!/^[1-9]\d{0,2}$/.test(country) || !/^\d+$/.test(number)) {
     throw new AkuvoxError('Enter a valid country calling code and local phone number (without the country code)');
   }
